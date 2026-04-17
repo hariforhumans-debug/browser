@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ULTIMA | NEURAL BROWSER v3.9.1</title>
+    <style>
+        :root { --bg: #050507; --accent: #00ff95; --panel: #0d0d12; --text: #e0e0e0; --border: #1f1f27; --danger: #ff0055; --storage: #00a2ff; }
+        body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); font-family: 'Segoe UI', sans-serif; color: var(--text); overflow: hidden; }
+
+        /* TABS */
+        #tab-bar { display: flex; background: #000; padding: 5px 10px 0; gap: 4px; height: 38px; border-bottom: 1px solid var(--border); align-items: flex-end; }
+        #t-container { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+        .tab { background: #141418; padding: 6px 12px; border-radius: 6px 6px 0 0; font-size: 11px; cursor: pointer; border: 1px solid var(--border); border-bottom: none; min-width: 130px; display: flex; align-items: center; justify-content: space-between; color: #666; transition: 0.3s; white-space: nowrap; }
+        .tab.active { background: var(--panel); color: var(--accent); border-top: 2px solid var(--accent); }
+
+        /* NAV */
+        #nav { background: var(--panel); padding: 8px; display: flex; gap: 8px; border-bottom: 1px solid var(--border); align-items: center; }
+        #url-bar { flex: 1; background: #000; border: 1px solid var(--border); border-radius: 4px; color: var(--accent); padding: 7px 12px; outline: none; font-family: monospace; }
+        .nav-btn { background: #1a1a20; border: 1px solid #333; color: white; padding: 6px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; transition: 0.2s; }
+        .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+        /* VIEWPORT */
+        #viewport { width: 100%; height: calc(100vh - 85px); position: relative; background: #000; }
+        .win { width: 100%; height: 100%; position: absolute; display: none; }
+        .win.active { display: block; }
+        iframe { width: 100%; height: 100%; border: none; background: white; }
+
+        /* INJECT MODAL */
+        #code-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; display: none; flex-direction: column; padding: 50px; }
+        .editor-tabs { display: flex; gap: 5px; margin-bottom: 10px; }
+        .e-tab { background: #1a1a20; border: 1px solid var(--border); color: #666; padding: 8px 20px; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 12px; }
+        .e-tab.active { background: var(--panel); color: var(--accent); border-bottom: 2px solid var(--accent); }
+        .code-input { flex: 1; background: #000; color: var(--accent); border: 1px solid var(--border); font-family: 'Consolas', monospace; padding: 20px; font-size: 14px; resize: none; outline: none; display: none; }
+        
+        /* OVERLAYS */
+        .page-overlay { position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; padding: 40px; overflow-y: auto; z-index: 10; }
+        .search-card { background: #0d0d12; border: 1px solid var(--border); border-radius: 12px; padding: 20px; width: 100%; max-width: 500px; margin-bottom: 15px; cursor: pointer; transition: 0.2s; }
+        .search-card:hover { border-color: var(--accent); background: #14141d; }
+        .search-card h3 { color: var(--accent); margin: 0; }
+        .offline-badge { color: var(--storage); border: 1px solid var(--storage); font-size: 9px; padding: 1px 4px; border-radius: 3px; text-transform: uppercase; margin-right: 5px;}
+    </style>
+</head>
+<body>
+
+<div id="code-modal">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="color:var(--accent)">NEURAL CODE INJECTION</h2>
+        <div>
+            <button class="nav-btn" onclick="saveToArchive()" style="border-color: var(--storage); color: var(--storage);">ARCHIVE</button>
+            <button class="nav-btn" onclick="loadFromArchive()" style="border-color: #aaa; color: #aaa;">RESTORE</button>
+        </div>
+    </div>
+    
+    <div class="editor-tabs">
+        <div class="e-tab active" onclick="switchEditor('html', this)">HTML</div>
+        <div class="e-tab" onclick="switchEditor('css', this)">CSS</div>
+        <div class="e-tab" onclick="switchEditor('js', this)">JS</div>
+    </div>
+    
+    <textarea id="html-input" class="code-input" style="display:block" placeholder="<h1>Hello</h1>"></textarea>
+    <textarea id="css-input" class="code-input" placeholder="body { background: black; }"></textarea>
+    <textarea id="js-input" class="code-input" placeholder="alert('Ready');"></textarea>
+
+    <div style="margin-top:15px; display:flex; gap:10px; justify-content:flex-end;">
+        <button class="nav-btn" onclick="closeModal()">CANCEL</button>
+        <button class="nav-btn" onclick="executeInjectedCode()" style="background:var(--accent); color:black;">RUN SCRIPT</button>
+    </div>
+</div>
+
+<div id="tab-bar">
+    <div id="t-container"></div>
+    <div onclick="createNewTab()" style="color:var(--accent); cursor:pointer; padding: 0 15px; font-size: 24px;">+</div>
+</div>
+
+<div id="nav">
+    <button class="nav-btn" onclick="goHome()">🏠</button>
+    <input type="text" id="url-bar" placeholder="Enter URL (e.g. google.com) or search..." onkeypress="if(event.key==='Enter') execute()">
+    <button class="nav-btn" onclick="execute()" style="background:var(--accent); color:black;">EXPLORE</button>
+    <button class="nav-btn" onclick="requestPointerLock()">LOCK MOUSE</button>
+    <button class="nav-btn" onclick="openModal()" style="border-color: var(--danger); color: var(--danger);">INJECT</button>
+</div>
+
+<div id="viewport"></div>
+
+<script>
+    let tabs = [];
+    let activeId = null;
+
+    window.onload = () => createNewTab();
+
+    // --- PROXY ENGINE ---
+    // Using a more aggressive proxy approach for sites that block embedding
+    function getProxyUrl(url) {
+        if (url.includes('eaglercraft') || url.includes('github.io')) return url; // Let games load directly
+        // Use a public proxy service for standard websites
+        return "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+    }
+
+    function execute() {
+        const val = document.getElementById('url-bar').value.trim();
+        if(!val) return;
+        
+        let targetUrl = val;
+        if(!val.includes('.') || val.includes(' ')) {
+            targetUrl = "https://www.google.com/search?q=" + encodeURIComponent(val);
+        } else {
+            targetUrl = val.startsWith('http') ? val : 'https://' + val;
+        }
+        loadUrlInTab(targetUrl);
+    }
+
+    function loadUrlInTab(url) {
+        const ifr = document.getElementById(`ifr-${activeId}`);
+        const overlay = document.getElementById(`overlay-${activeId}`);
+        const label = document.getElementById(`lbl-${activeId}`);
+
+        overlay.style.display = 'none';
+        ifr.style.display = 'block';
+        
+        // Apply proxy bypass
+        ifr.src = getProxyUrl(url);
+        
+        label.innerText = url.replace('https://', '').split('/')[0].substring(0, 15);
+        document.getElementById('url-bar').value = url;
+    }
+
+    function createNewTab(url = '', title = 'New Tab') {
+        const id = 't' + Date.now();
+        tabs.push({ id });
+        
+        const t = document.createElement('div');
+        t.className = 'tab'; t.id = `btn-${id}`;
+        t.innerHTML = `<span id="lbl-${id}">${title}</span> <span onclick="event.stopPropagation(); closeTab('${id}')">×</span>`;
+        t.onclick = () => switchTab(id);
+        document.getElementById('t-container').appendChild(t);
+
+        const w = document.createElement('div');
+        w.className = 'win'; w.id = `win-${id}`;
+        w.innerHTML = `
+            <div class="page-overlay" id="overlay-${id}">
+                <h1 style="color:var(--accent); font-size: 3rem;">ULTIMA v3.9</h1>
+                <p style="color:#555;">Neural Proxy Active - Enter a URL to start</p>
+                <div style="width:100%; max-width:500px; margin-top:20px;">
+                    <div class="search-card" onclick="loadUrlInTab('https://www.bing.com')"><h3>Bing Search</h3><p>Proxied Search Engine</p></div>
+                    <div class="search-card" onclick="loadUrlInTab('https://eaglercraft.com/mc/1.8.8/')"><h3>Minecraft 1.8.8</h3><p>Eaglercraft Instance</p></div>
+                </div>
+            </div>
+            <iframe id="ifr-${id}" style="display:none;" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" allow="autoplay; fullscreen; pointer-lock;"></iframe>
+        `;
+        document.getElementById('viewport').appendChild(w);
+        switchTab(id);
+    }
+
+    function switchTab(id) {
+        activeId = id;
+        document.querySelectorAll('.tab, .win').forEach(e => e.classList.remove('active'));
+        const btn = document.getElementById(`btn-${id}`);
+        const win = document.getElementById(`win-${id}`);
+        if(btn) btn.classList.add('active');
+        if(win) win.classList.add('active');
+    }
+
+    function closeTab(id) {
+        if(tabs.length <= 1) return;
+        tabs = tabs.filter(t => t.id !== id);
+        document.getElementById(`btn-${id}`).remove();
+        document.getElementById(`win-${id}`).remove();
+        if(activeId === id) switchTab(tabs[0].id);
+    }
+
+    function goHome() {
+        document.getElementById(`ifr-${activeId}`).style.display = 'none';
+        document.getElementById(`overlay-${activeId}`).style.display = 'flex';
+        document.getElementById('url-bar').value = '';
+    }
+
+    function requestPointerLock() {
+        const ifr = document.getElementById(`ifr-${activeId}`);
+        if (ifr) ifr.requestPointerLock();
+    }
+
+    function openModal() { document.getElementById('code-modal').style.display = 'flex'; }
+    function closeModal() { document.getElementById('code-modal').style.display = 'none'; }
+    function switchEditor(type, btn) {
+        document.querySelectorAll('.code-input').forEach(el => el.style.display = 'none');
+        document.querySelectorAll('.e-tab').forEach(el => el.classList.remove('active'));
+        document.getElementById(`${type}-input`).style.display = 'block';
+        btn.classList.add('active');
+    }
+    
+    function executeInjectedCode() {
+        const h = document.getElementById('html-input').value;
+        const c = document.getElementById('css-input').value;
+        const j = document.getElementById('js-input').value;
+        const ifr = document.getElementById(`ifr-${activeId}`);
+        document.getElementById(`overlay-${activeId}`).style.display = 'none';
+        ifr.style.display = 'block';
+        const combined = `${h}<style>${c}</style><script>${j}<\/script>`;
+        const doc = ifr.contentWindow.document;
+        doc.open(); doc.write(combined); doc.close();
+        closeModal();
+    }
+</script>
+</body>
+</html>
